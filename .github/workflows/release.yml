@@ -124,6 +124,12 @@ jobs:
           SIGNED: ${{ steps.signing.outputs.available }}
         run: |
           {
+            if [ "$SIGNED" != "true" ]; then
+              echo "> [!CAUTION]"
+              echo "> **This build cannot be installed.** It is published for"
+              echo "> review and reproducibility only. See below."
+              echo
+            fi
             echo "## Download"
             echo
             echo "\`AndroidTether-${{ steps.version.outputs.version }}.zip\` -- macOS 13 and later, Apple Silicon."
@@ -134,10 +140,12 @@ jobs:
             echo
             if [ "$SIGNED" != "true" ]; then
               echo "> [!WARNING]"
-              echo "> **This build is unsigned.** CI had no Apple signing identity,"
-              echo "> so macOS will refuse to load the driver on a normally"
-              echo "> configured Mac. It is published so the build is reproducible"
-              echo "> and reviewable, not because it can be installed."
+              echo "> **This build is unsigned, and the driver has never been run"
+              echo "> against a phone.** CI had no Apple signing identity, and the"
+              echo "> three DriverKit entitlements the extension needs have not been"
+              echo "> granted by Apple, so macOS refuses to load it whatever it is"
+              echo "> signed with. It is published so the build is reproducible and"
+              echo "> reviewable, not because it works."
               echo "> See the README for what Apple has to approve first."
               echo
             fi
@@ -156,3 +164,8 @@ jobs:
           body_path: release-notes.md
           files: dist/*
           fail_on_unmatched_files: true
+          # An unsigned build cannot be installed on a normally configured
+          # Mac, so it is not a release in any sense a user would expect.
+          # Marking it a pre-release keeps it off the repository's headline
+          # and out of "latest".
+          prerelease: ${{ steps.signing.outputs.available != 'true' }}
