@@ -144,9 +144,19 @@ jobs:
             echo
             echo "\`AndroidTether-${{ steps.version.outputs.version }}.zip\` -- macOS 13 and later, Apple Silicon."
             echo
-            echo "Unzip it, move **AndroidTether.app** into your Applications"
-            echo "folder, and open it. Installing from anywhere else is refused"
-            echo "by macOS. Keep the app: deleting it removes the driver."
+            if [ "$SIGNED" = "true" ]; then
+              echo "Unzip it, move **AndroidTether.app** into your Applications"
+              echo "folder, and open it. Installing from anywhere else is refused"
+              echo "by macOS. Keep the app: deleting it removes the driver."
+            else
+              # No install instructions for a build that cannot be installed.
+              # Printing them anyway contradicts the warning above it and
+              # sends the reader off to do something that will not work.
+              echo "The archive holds **AndroidTether.app** with the system"
+              echo "extension inside it, exactly as CI built it. You can inspect"
+              echo "it (\`codesign -dv --entitlements -\`), but macOS will not"
+              echo "load the driver -- see the warning below."
+            fi
             echo
             if [ "$SIGNED" != "true" ]; then
               echo "> [!WARNING]"
