@@ -26,8 +26,8 @@ on:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Tag to build and publish (e.g. v1.0)"
+      version:
+        description: "Version to tag and publish, without the v (e.g. 0.1.0)"
         required: true
 
 permissions:
@@ -38,9 +38,11 @@ jobs:
     runs-on: macos-latest
 
     steps:
+      # No explicit ref: a tag push checks out the tag, and a manual run
+      # checks out whatever branch it was started from. The tag for a
+      # manual run does not exist yet -- it is created by the release
+      # step below, at this commit.
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
 
       # The tests gate the release: they are fast, they need no signing,
       # and shipping a build whose framing is broken helps nobody.
@@ -49,10 +51,18 @@ jobs:
 
       - name: Work out the version
         id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            version="${INPUT_VERSION#v}"
+            tag="v$version"
+          else
+            tag="${{ github.ref_name }}"
+            version="${tag#v}"
+          fi
           echo "tag=$tag"         >> "$GITHUB_OUTPUT"
-          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       # Everything downstream keys off steps.signing.outputs.available, so
       # an unsigned build is a normal path rather than a failure.
@@ -164,6 +174,9 @@ jobs:
           body_path: release-notes.md
           files: dist/*
           fail_on_unmatched_files: true
+          # On a manual run the tag does not exist yet; this creates it at
+          # the commit that was just built and tested.
+          target_commitish: ${{ github.sha }}
           # An unsigned build cannot be installed on a normally configured
           # Mac, so it is not a release in any sense a user would expect.
           # Marking it a pre-release keeps it off the repository's headline
