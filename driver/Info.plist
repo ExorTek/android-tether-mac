@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-License-Identifier: Apache-2.0
+  Copyright 2026 ExorTek
+
+  The four personalities below are the ways an Android phone presents its
+  RNDIS function. All of them match the *control* interface; the driver
+  finds the data interface itself, because the bulk endpoints are on the
+  other half of the function.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>com.exortek.androidtether.driver</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.exortek.androidtether.driver</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>AndroidTetherDriver</string>
+	<key>CFBundlePackageType</key>
+	<string>DEXT</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>OSBundleUsageDescription</key>
+	<string>Provides a network interface for USB tethering from an Android device.</string>
+	<key>OSMinimumDriverKitVersion</key>
+	<string>22.0</string>
+
+	<key>IOKitPersonalities</key>
+	<dict>
+		<!--
+		  The CDC class triple the USB-IF assigns to RNDIS over ACM:
+		  Communications / Abstract Control Model / vendor-specific
+		  protocol. This is what most Android builds present.
+		-->
+		<key>RNDIS over CDC ACM</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>com.exortek.androidtether.driver</string>
+			<key>IOClass</key>
+			<string>IOUserService</string>
+			<key>IOProviderClass</key>
+			<string>IOUSBHostInterface</string>
+			<key>IOUserClass</key>
+			<string>AndroidTetherDriver</string>
+			<key>IOUserServerName</key>
+			<string>com.exortek.androidtether.driver</string>
+			<key>IOResourceMatch</key>
+			<string>IOKit</string>
+			<key>bInterfaceClass</key>
+			<integer>224</integer>
+			<key>bInterfaceSubClass</key>
+			<integer>1</integer>
+			<key>bInterfaceProtocol</key>
+			<integer>3</integer>
+		</dict>
+
+		<!--
+		  Microsoft's own RNDIS triple, which some gadgets use so that
+		  Windows binds its inbox driver without an .inf file.
+		-->
+		<key>RNDIS over vendor-specific</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>com.exortek.androidtether.driver</string>
+			<key>IOClass</key>
+			<string>IOUserService</string>
+			<key>IOProviderClass</key>
+			<string>IOUSBHostInterface</string>
+			<key>IOUserClass</key>
+			<string>AndroidTetherDriver</string>
+			<key>IOUserServerName</key>
+			<string>com.exortek.androidtether.driver</string>
+			<key>IOResourceMatch</key>
+			<string>IOKit</string>
+			<key>bInterfaceClass</key>
+			<integer>239</integer>
+			<key>bInterfaceSubClass</key>
+			<integer>4</integer>
+			<key>bInterfaceProtocol</key>
+			<integer>1</integer>
+		</dict>
+
+		<!--
+		  Communications / ACM with a vendor-specific protocol byte, seen
+		  on gadgets that otherwise look like a modem.
+		-->
+		<key>RNDIS over ACM vendor protocol</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>com.exortek.androidtether.driver</string>
+			<key>IOClass</key>
+			<string>IOUserService</string>
+			<key>IOProviderClass</key>
+			<string>IOUSBHostInterface</string>
+			<key>IOUserClass</key>
+			<string>AndroidTetherDriver</string>
+			<key>IOUserServerName</key>
+			<string>com.exortek.androidtether.driver</string>
+			<key>IOResourceMatch</key>
+			<string>IOKit</string>
+			<key>bInterfaceClass</key>
+			<integer>2</integer>
+			<key>bInterfaceSubClass</key>
+			<integer>2</integer>
+			<key>bInterfaceProtocol</key>
+			<integer>255</integer>
+		</dict>
+
+		<!--
+		  Some devices declare the wireless-controller class at the
+		  interface and leave the subclass and protocol to the function.
+		  Matching on the class alone would be too broad, so this one also
+		  pins the device class.
+		-->
+		<key>RNDIS over wireless controller</key>
+		<dict>
+			<key>CFBundleIdentifier</key>
+			<string>com.exortek.androidtether.driver</string>
+			<key>IOClass</key>
+			<string>IOUserService</string>
+			<key>IOProviderClass</key>
+			<string>IOUSBHostInterface</string>
+			<key>IOUserClass</key>
+			<string>AndroidTetherDriver</string>
+			<key>IOUserServerName</key>
+			<string>com.exortek.androidtether.driver</string>
+			<key>IOResourceMatch</key>
+			<string>IOKit</string>
+			<key>bDeviceClass</key>
+			<integer>224</integer>
+			<key>bInterfaceClass</key>
+			<integer>224</integer>
+			<key>bInterfaceSubClass</key>
+			<integer>1</integer>
+			<key>bInterfaceProtocol</key>
+			<integer>3</integer>
+		</dict>
+	</dict>
+</dict>
+</plist>

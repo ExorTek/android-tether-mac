@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 ExorTek
+
+name: Build
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  protocol:
+    name: RNDIS protocol tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # No Xcode, no SDK, no hardware. If this job ever needs a Mac, then
+      # something platform-specific has leaked into rndis/ and the part of
+      # the driver a phone can attack has stopped being testable.
+      - name: Run the tests
+        run: make -C tests
+
+      - name: Run them again under the sanitizers
+        run: make -C tests asan
+
+  driver:
+    name: System extension and installer
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Worth printing: this is the first thing to check when a build that
+      # passed yesterday fails today, because the runner's Xcode moves.
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk driverkit --show-sdk-version
+
+      # Ad-hoc signed. The DriverKit entitlements are unauthorised without
+      # a provisioning profile, so this proves the driver builds, links
+      # and signs -- not that it loads. See README.md.
+      - name: Build
+        working-directory: driver
+        run: make all
+
+      - name: Check the bundle layout
+        working-directory: driver
+        run: |
+          # A dext bundle is flat, and its executable must be named after
+          # the bundle identifier or the activation request cannot find it.
+          test -f build/com.exortek.androidtether.driver.dext/com.exortek.androidtether.driver
+          test -f build/com.exortek.androidtether.driver.dext/Info.plist
+          test -d build/AndroidTether.app/Contents/Library/SystemExtensions/com.exortek.androidtether.driver.dext
+          lipo -info build/com.exortek.androidtether.driver.dext/com.exortek.androidtether.driver
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AndroidTether-app-unsigned
+          path: driver/build/AndroidTether.app
+          if-no-files-found: error

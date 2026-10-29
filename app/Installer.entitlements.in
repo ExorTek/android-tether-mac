@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-License-Identifier: Apache-2.0
+  Copyright 2026 ExorTek
+
+  A template: __TEAM_ID__ is substituted at build time.
+
+  The sandbox is here because Apple's NetworkingDriverKit sample sandboxes
+  its installer and the DriverKit documentation assumes it. The app only
+  submits an activation request, so it costs nothing.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.developer.system-extension.install</key>
+	<true/>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.application-identifier</key>
+	<string>__TEAM_ID__.com.exortek.androidtether</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>__TEAM_ID__</string>
+</dict>
+</plist>

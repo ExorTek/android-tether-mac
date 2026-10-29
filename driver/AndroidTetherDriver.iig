@@ -1,0 +1,99 @@
+/*
+ * AndroidTetherDriver.iig -- the driver's interface, as iig sees it.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ * Copyright 2026 ExorTek
+ *
+ * Only two kinds of thing belong here: the IOUserNetworkEthernet methods
+ * we override, and the callbacks DriverKit has to generate an OSAction
+ * for. Everything else the driver does is a plain C++ method declared in
+ * the generated header's ordinary section, or a file-local function.
+ *
+ * A method declared here as a TYPE(...) callback gets a matching
+ * CreateAction<Name>() from iig, and its implementation must be written
+ * with the _Impl suffix. The suffix is not decoration: without it the
+ * definition compiles as a different, never-called function and the
+ * driver silently does nothing.
+ */
+
+#ifndef ANDROIDTETHERDRIVER_IIG
+#define ANDROIDTETHERDRIVER_IIG
+
+#include <Availability.h>
+#include <DriverKit/IOService.iig>
+#include <DriverKit/IODataQueueDispatchSource.iig>
+#include <DriverKit/IOTimerDispatchSource.iig>
+#include <USBDriverKit/IOUSBHostPipe.iig>
+#include <NetworkingDriverKit/IOUserNetworkEthernet.iig>
+
+class AndroidTetherDriver: public IOUserNetworkEthernet
+{
+public:
+    virtual bool            init() override;
+    virtual void            free() override;
+
+    virtual kern_return_t   Start(IOService *provider) override;
+    virtual kern_return_t   Stop(IOService *provider) override;
+
+    /*
+     * The stack bringing the interface up or down. The RNDIS packet
+     * filter is set here rather than during Start, so a phone that is
+     * plugged in but not in use is not asked to forward anything.
+     */
+    virtual kern_return_t   SetInterfaceEnable(bool isEnable) override;
+
+    /* The transmit submission queue has packets for us. */
+    virtual void            TxPacketAvailable(OSAction *action)
+                                TYPE(IODataQueueDispatchSource::DataAvailable);
+
+    /* A bulk IN transfer finished: one or more frames, or an error. */
+    virtual void            ReadComplete(OSAction *action,
+                                         IOReturn status,
+                                         uint32_t actualByteCount,
+                                         uint64_t completionTimestamp)
+                                TYPE(IOUSBHostPipe::CompleteAsyncIO);
+
+    /* A bulk OUT transfer finished; its slot is free again. */
+    virtual void            WriteComplete(OSAction *action,
+                                          IOReturn status,
+                                          uint32_t actualByteCount,
+                                          uint64_t completionTimestamp)
+                                TYPE(IOUSBHostPipe::CompleteAsyncIO);
+
+    /*
+     * Re-arm reads after the pipe refused them. A phone that is awake but
+     * idle can stall its bulk IN endpoint; retrying on a timer costs
+     * nothing and recovers without unplugging the cable.
+     */
+    virtual void            RetryTimer(OSAction *action, uint64_t time)
+                                TYPE(IOTimerDispatchSource::TimerOccurred);
+
+    /* ---- not callbacks, just the driver's own methods ---- */
+
+    /* Claim the data interface and its two bulk pipes. */
+    kern_return_t           OpenDataInterface() LOCALONLY;
+
+    /* INITIALIZE, then read the MAC address. Leaves the filter unset. */
+    kern_return_t           PerformHandshake(IOUserNetworkMACAddress *mac) LOCALONLY;
+
+    /* One command out, one response back, on endpoint 0. */
+    kern_return_t           SendControlMessage(uint32_t length) LOCALONLY;
+    kern_return_t           ReadControlResponse(uint32_t *length) LOCALONLY;
+
+    /* Tell the device which frames to forward; 0 means none. */
+    kern_return_t           SetPacketFilter(uint32_t filter) LOCALONLY;
+
+    /* Hand every free receive slot back to the bulk IN pipe. */
+    void                    SubmitReads() LOCALONLY;
+
+    /* Build an RNDIS data record around one frame and send it. */
+    kern_return_t           SendFrame(const uint8_t *frame, uint32_t length) LOCALONLY;
+
+    /* Deliver the frames found in one completed transfer. */
+    void                    DeliverFrames(const uint8_t *buf, uint32_t length) LOCALONLY;
+
+    /* Release everything Start allocated, in reverse order. */
+    void                    TearDown() LOCALONLY;
+};
+
+#endif /* ANDROIDTETHERDRIVER_IIG */

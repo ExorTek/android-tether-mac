@@ -1,0 +1,32 @@
+android-tether-mac
+Copyright 2026 ExorTek
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+
+Where this implementation comes from
+------------------------------------
+
+No third-party source code is included in this project. The implementation
+was written against published specifications and vendor documentation, which
+are listed here so that any part of it can be traced back to its source.
+
+RNDIS protocol (rndis/)
+    [MS-RNDIS]: Remote Network Driver Interface Specification (RNDIS)
+    Protocol, published by Microsoft under its Open Specifications terms,
+    which permit copying the document to build implementations of the
+    technology it describes. Message layouts, OIDs, status codes and the
+    control-channel class requests come from there.
+
+    Remote NDIS To USB Mapping, Microsoft Windows driver documentation, for
+    how the control channel rides on endpoint 0 and how data records are
+    carried on the bulk endpoints.
+
+DriverKit driver (driver/, app/)
+    Apple's NetworkingDriverKit and USBDriverKit documentation, and the
+    sample "Connecting a network driver", for the driver lifecycle, the
+    packet pool and queue model, and the system-extension install flow.
+
+USB matching
+    USB-IF assigned class, subclass and protocol codes, and the descriptors
+    a device reports about itself.

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SPDX-License-Identifier: Apache-2.0
+  Copyright 2026 ExorTek
+
+  A template, not the entitlements file: __TEAM_ID__ is substituted at
+  build time from the provisioning profile, so no Team ID is committed.
+
+  All three of these are restricted. Apple grants them per App ID, on
+  request, and until it does the signed extension will not load. See the
+  README.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.developer.driverkit</key>
+	<true/>
+	<key>com.apple.developer.driverkit.family.networking</key>
+	<true/>
+	<key>com.apple.developer.driverkit.transport.usb</key>
+	<array>
+		<!--
+		  Empty: this driver matches on interface class, not on a vendor
+		  ID, because it supports every Android phone rather than one
+		  manufacturer's. Apple's request form expects a vendor ID here,
+		  which is the awkward part of the request; see the README.
+		-->
+		<dict/>
+	</array>
+</dict>
+</plist>

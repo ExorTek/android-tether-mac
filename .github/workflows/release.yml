@@ -1,0 +1,158 @@
+# Builds what a user can download and publishes it as a GitHub release.
+#
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 ExorTek
+#
+# Signing is optional and driven by repository secrets. Without them the
+# release is still produced, but it is marked clearly as unsigned: macOS
+# will not load an ad-hoc signed system extension at all.
+#
+# To publish signed, notarized artifacts, set these repository secrets:
+#   MACOS_CERT_P12         base64 of a .p12 holding the Developer ID
+#                          Application identity
+#   MACOS_CERT_PASSWORD    the .p12 password
+#   MACOS_SIGN_APP         "Developer ID Application: NAME (TEAMID)"
+#   MACOS_NOTARY_APPLE_ID  the Apple ID to notarize as
+#   MACOS_NOTARY_TEAM_ID   that account's Team ID
+#   MACOS_NOTARY_PASSWORD  an app-specific password for it
+#
+# The extension additionally needs the three DriverKit entitlements,
+# granted by Apple against the App ID. See README.md.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish (e.g. v1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      # The tests gate the release: they are fast, they need no signing,
+      # and shipping a build whose framing is broken helps nobody.
+      - name: Run the tests
+        run: make -C tests
+
+      - name: Work out the version
+        id: version
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$tag"         >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      # Everything downstream keys off steps.signing.outputs.available, so
+      # an unsigned build is a normal path rather than a failure.
+      - name: Import signing certificates
+        id: signing
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          if [ -z "$CERT_P12" ]; then
+            echo "No MACOS_CERT_P12 secret: building unsigned."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/build.keychain-db"
+          password="$(uuidgen)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo -n "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" \
+              -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          # Without this, codesign blocks on a UI prompt nobody can answer.
+          security set-key-partition-list -S apple-tool:,apple: -s \
+              -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          rm -f "$RUNNER_TEMP/cert.p12"
+          echo "available=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        working-directory: driver
+        env:
+          SIGNED: ${{ steps.signing.outputs.available }}
+        run: |
+          if [ "$SIGNED" = "true" ]; then
+            make all SIGN_ID="${{ secrets.MACOS_SIGN_APP }}"
+          else
+            make all
+          fi
+
+      - name: Notarize
+        if: steps.signing.outputs.available == 'true'
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent driver/build/AndroidTether.app \
+                "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+              --apple-id "${{ secrets.MACOS_NOTARY_APPLE_ID }}" \
+              --team-id "${{ secrets.MACOS_NOTARY_TEAM_ID }}" \
+              --password "${{ secrets.MACOS_NOTARY_PASSWORD }}" \
+              --wait
+          xcrun stapler staple driver/build/AndroidTether.app
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          # ditto, not zip: it preserves the bundle's symlinks and,
+          # critically, the code signature.
+          ditto -c -k --keepParent driver/build/AndroidTether.app \
+                dist/AndroidTether-${{ steps.version.outputs.version }}.zip
+
+      - name: Checksums
+        run: |
+          cd dist
+          shasum -a 256 * | tee SHA256SUMS.txt
+
+      - name: Compose the release notes
+        env:
+          SIGNED: ${{ steps.signing.outputs.available }}
+        run: |
+          {
+            echo "## Download"
+            echo
+            echo "\`AndroidTether-${{ steps.version.outputs.version }}.zip\` -- macOS 13 and later, Apple Silicon."
+            echo
+            echo "Unzip it, move **AndroidTether.app** into your Applications"
+            echo "folder, and open it. Installing from anywhere else is refused"
+            echo "by macOS. Keep the app: deleting it removes the driver."
+            echo
+            if [ "$SIGNED" != "true" ]; then
+              echo "> [!WARNING]"
+              echo "> **This build is unsigned.** CI had no Apple signing identity,"
+              echo "> so macOS will refuse to load the driver on a normally"
+              echo "> configured Mac. It is published so the build is reproducible"
+              echo "> and reviewable, not because it can be installed."
+              echo "> See the README for what Apple has to approve first."
+              echo
+            fi
+            echo "Verify your download against \`SHA256SUMS.txt\`:"
+            echo
+            echo '```bash'
+            echo "shasum -a 256 -c SHA256SUMS.txt"
+            echo '```'
+          } > release-notes.md
+          cat release-notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: AndroidTether ${{ steps.version.outputs.version }}
+          body_path: release-notes.md
+          files: dist/*
+          fail_on_unmatched_files: true
