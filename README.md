@@ -149,9 +149,22 @@ Launch failed ... Launchd job spawn failed (POSIX error 163)
 ```
 
 Left off, the app starts and shows its window. That is the whole of what
-an unsigned build can do -- clicking **Install Driver** will fail,
-because installing a system extension is exactly the thing the missing
+an unsigned build can do; clicking **Install Driver** reports
+
+```
+Missing entitlement com.apple.developer.system-extension.install
+```
+
+because installing a system extension is exactly the thing that
 entitlement authorises.
+
+That one is **not** the hard part. It is an ordinary capability any
+Apple Developer Program member can switch on for an App ID, so a $99
+membership gets you past this message. What waits immediately behind it
+is the real wall: the extension itself still needs the three restricted
+DriverKit entitlements, and those Apple grants case by case. Getting
+past this error means reaching the next one, not reaching a working
+driver.
 
 A build downloaded from Releases will not even get that far: macOS
 quarantines downloaded files, and Gatekeeper refuses an app that is not

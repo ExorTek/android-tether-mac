@@ -38,7 +38,7 @@ static NSString *const kDriverBundleID = @"com.exortek.androidtether.driver";
 
 - (void)applicationDidFinishLaunching:(NSNotification *)note
 {
-    const NSRect frame = NSMakeRect(0, 0, 460, 190);
+    const NSRect frame = NSMakeRect(0, 0, 480, 230);
 
     self.window = [[NSWindow alloc]
         initWithContentRect:frame
@@ -51,24 +51,34 @@ static NSString *const kDriverBundleID = @"com.exortek.androidtether.driver";
 
     NSTextField *title = [NSTextField labelWithString:@"Android USB tethering"];
     title.font = [NSFont boldSystemFontOfSize:15];
-    title.frame = NSMakeRect(20, 140, 420, 24);
+    title.frame = NSMakeRect(20, 180, 440, 24);
 
     NSTextField *blurb = [NSTextField wrappingLabelWithString:
         @"Installs a network driver for USB tethering from an Android phone. "
         @"Keep this app in your Applications folder: deleting it removes the "
         @"driver."];
-    blurb.frame = NSMakeRect(20, 86, 420, 50);
+    blurb.frame = NSMakeRect(20, 126, 440, 50);
     blurb.textColor = [NSColor secondaryLabelColor];
 
     self.installButton = [NSButton buttonWithTitle:@"Install Driver"
                                             target:self
                                             action:@selector(install:)];
-    self.installButton.frame = NSMakeRect(20, 44, 140, 32);
+    self.installButton.frame = NSMakeRect(20, 84, 140, 32);
     self.installButton.keyEquivalent = @"\r";
 
-    self.status = [NSTextField labelWithString:@"Not installed."];
-    self.status.frame = NSMakeRect(20, 14, 420, 20);
+    /*
+     * Wrapping, and three lines tall. The failures worth reading are the
+     * long ones -- "Missing entitlement
+     * com.apple.developer.system-extension.install" is the whole
+     * diagnosis, and a single-line label truncates it to nothing useful
+     * right when someone needs it.
+     */
+    self.status = [NSTextField wrappingLabelWithString:@"Not installed."];
+    self.status.frame = NSMakeRect(20, 14, 440, 56);
     self.status.textColor = [NSColor secondaryLabelColor];
+    self.status.font = [NSFont monospacedDigitSystemFontOfSize:11
+                                                        weight:NSFontWeightRegular];
+    self.status.selectable = YES;   /* so the message can be copied */
 
     NSView *content = self.window.contentView;
     [content addSubview:title];
