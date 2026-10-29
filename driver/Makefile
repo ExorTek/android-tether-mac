@@ -79,9 +79,13 @@ DEXT_CFLAGS := \
 # driverkit target knows which startup object and libraries a dext needs;
 # -nostdlib only moves that job here, where the library's name has to be
 # guessed and has in fact been spelled differently across SDKs.
+# All three frameworks, not just DriverKit: USBDriverKit carries the
+# IOUSBHostInterface metaclass and NetworkingDriverKit the
+# IOUserNetworkEthernet vtable, both of which the generated glue
+# references. Including a framework's headers does not link it.
 DEXT_LDFLAGS := \
 	-target $(DEXT_TARGET) -isysroot $(DRIVERKIT_SDK) \
-	-framework DriverKit
+	-framework DriverKit -framework USBDriverKit -framework NetworkingDriverKit
 
 APP_CFLAGS := \
 	-isysroot $(MACOS_SDK) -mmacosx-version-min=13.0 \
