@@ -55,26 +55,33 @@ CODESIGN  := $(shell xcrun -f codesign)
 # and then fails to launch -- with a message that does not say why.
 DEXT_TARGET := arm64e-apple-driverkit22.0
 
+# -target is not optional here, and not only for codegen: the DriverKit
+# headers define their iig annotations (KERNEL, NATIVE, EXTENDS) behind
+# platform checks. Without it clang parses Apple's own .iig files as
+# macOS headers, those macros stay undefined, and iig fails inside
+# OSObject.iig with errors that look like the SDK is broken.
 DEXT_INCLUDES := \
-	-isysroot $(DRIVERKIT_SDK) \
-	-iframework $(DRIVERKIT_SDK)/System/DriverKit/System/Library/Frameworks \
-	-isystem $(DRIVERKIT_SDK)/System/DriverKit/usr/include \
+	-target $(DEXT_TARGET) -isysroot $(DRIVERKIT_SDK) \
 	-I$(GEN) -I. -I../rndis
 
 DEXT_CXXFLAGS := \
-	-target $(DEXT_TARGET) $(DEXT_INCLUDES) \
+	$(DEXT_INCLUDES) \
 	-std=gnu++17 -fno-exceptions -fno-rtti -fno-builtin -fno-common \
 	-Wall -Wextra -Wno-unused-parameter -O2 -g
 
 DEXT_CFLAGS := \
-	-target $(DEXT_TARGET) $(DEXT_INCLUDES) \
+	$(DEXT_INCLUDES) \
 	-std=c11 -fno-builtin -fno-common -Wall -Wextra -O2 -g
+
+# The DriverKit C runtime has been named both ways across SDKs; pick
+# whichever this one actually ships rather than hard-coding a guess that
+# breaks on the next Xcode.
+DEXT_CRT := $(if $(wildcard $(DRIVERKIT_SDK)/System/DriverKit/usr/lib/libCRTEndClient_driverkit.a),\
+                 -lCRTEndClient_driverkit,-lCRTEndClient)
 
 DEXT_LDFLAGS := \
 	-target $(DEXT_TARGET) -isysroot $(DRIVERKIT_SDK) \
-	-F$(DRIVERKIT_SDK)/System/DriverKit/System/Library/Frameworks \
-	-L$(DRIVERKIT_SDK)/System/DriverKit/usr/lib \
-	-framework DriverKit -nostdlib -lCRTEndClient_driverkit
+	-framework DriverKit -nostdlib $(DEXT_CRT)
 
 APP_CFLAGS := \
 	-isysroot $(MACOS_SDK) -mmacosx-version-min=13.0 \
@@ -122,7 +129,7 @@ $(GEN)/AndroidTetherDriver.h $(GEN)/AndroidTetherDriver.iig.cpp: AndroidTetherDr
 	       --header $(GEN)/AndroidTetherDriver.h \
 	       --impl $(GEN)/AndroidTetherDriver.iig.cpp \
 	       --framework-name AndroidTetherDriver \
-	       -- $(DEXT_INCLUDES) -x c++ -std=gnu++17
+	       -- $(DEXT_INCLUDES) -x c++ -std=gnu++17 -D__IIG=1
 
 # ---- the extension ------------------------------------------------
 
