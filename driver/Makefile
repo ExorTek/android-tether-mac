@@ -53,24 +53,21 @@ CODESIGN  := $(shell xcrun -f codesign)
 
 # arm64e is not optional. A dext built for plain arm64 stages, activates,
 # and then fails to launch -- with a message that does not say why.
-DEXT_TARGET := arm64e-apple-driverkit22.0
+DEXT_DEPLOYMENT := 22.0
+DEXT_TARGET     := arm64e-apple-driverkit$(DEXT_DEPLOYMENT)
 
-# -target is not optional here, and not only for codegen: the DriverKit
-# headers define their iig annotations (KERNEL, NATIVE, EXTENDS) behind
-# platform checks. Without it clang parses Apple's own .iig files as
-# macOS headers, those macros stay undefined, and iig fails inside
-# OSObject.iig with errors that look like the SDK is broken.
 DEXT_INCLUDES := \
-	-target $(DEXT_TARGET) -isysroot $(DRIVERKIT_SDK) \
-	-I$(GEN) -I. -I../rndis
+	-isysroot $(DRIVERKIT_SDK) -I$(GEN) -I. -I../rndis
+
+IIG_CLANG_FLAGS := $(DEXT_INCLUDES) -x c++ -std=gnu++17 -D__IIG=1
 
 DEXT_CXXFLAGS := \
-	$(DEXT_INCLUDES) \
+	-target $(DEXT_TARGET) $(DEXT_INCLUDES) \
 	-std=gnu++17 -fno-exceptions -fno-rtti -fno-builtin -fno-common \
 	-Wall -Wextra -Wno-unused-parameter -O2 -g
 
 DEXT_CFLAGS := \
-	$(DEXT_INCLUDES) \
+	-target $(DEXT_TARGET) $(DEXT_INCLUDES) \
 	-std=c11 -fno-builtin -fno-common -Wall -Wextra -O2 -g
 
 # The DriverKit C runtime has been named both ways across SDKs; pick
@@ -123,13 +120,27 @@ all: app
 
 # iig turns the .iig into a header the driver includes and a .cpp holding
 # the dispatch glue. Both are generated; neither is committed.
+#
+# Two things about the flags after the `--`, both learned the hard way:
+#
+#  * -D__IIG=1 is required. The DriverKit headers gate their annotation
+#    macros -- KERNEL, NATIVE, EXTENDS, LOCALONLY -- on it. Without it
+#    those expand to nothing recognisable and iig fails *inside Apple's
+#    own OSObject.iig* with "variable has incomplete type 'class
+#    KERNEL'", which reads like a broken SDK and is not.
+#
+#  * -target must NOT be passed. iig parses it itself and rejects it
+#    with "-target is only permitted with an unknown arch". The platform
+#    comes from --deployment-target instead. The compiler proper does
+#    get -target; only iig does not.
 $(GEN)/AndroidTetherDriver.h $(GEN)/AndroidTetherDriver.iig.cpp: AndroidTetherDriver.iig
 	@mkdir -p $(GEN)
 	$(IIG) --def AndroidTetherDriver.iig \
 	       --header $(GEN)/AndroidTetherDriver.h \
 	       --impl $(GEN)/AndroidTetherDriver.iig.cpp \
 	       --framework-name AndroidTetherDriver \
-	       -- $(DEXT_INCLUDES) -x c++ -std=gnu++17 -D__IIG=1
+	       --deployment-target $(DEXT_DEPLOYMENT) \
+	       -- $(IIG_CLANG_FLAGS)
 
 # ---- the extension ------------------------------------------------
 

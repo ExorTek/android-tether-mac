@@ -40,6 +40,9 @@ jobs:
           sw_vers
           xcodebuild -version
           xcrun --sdk driverkit --show-sdk-version
+          # iig's own options are not documented anywhere public, and the
+          # errors it gives for a wrong one are misleading. Print them.
+          "$(xcrun --sdk driverkit -f iig)" --help || true
 
       # Ad-hoc signed. The DriverKit entitlements are unauthorised without
       # a provisioning profile, so this proves the driver builds, links
