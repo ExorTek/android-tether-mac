@@ -172,15 +172,47 @@ notarized ("Apple could not verify ... is free of malware"). Build
 locally if you want to see the app run; nothing you can do to the
 download makes the driver load.
 
-To run an unapproved build during development, Apple's developer mode
-relaxes the signing requirement for the extension:
+### Testing it without an Apple Developer account
+
+An Apple Developer Program membership buys the ability to ship this to
+*other people*. Proving the driver works on **your own** Mac does not
+need one -- but it does need you to turn off the protections that are
+refusing it, which is a real cost and worth understanding before you
+start.
+
+With AMFI disabled, entitlements are not checked at all, so the
+unauthorised ones stop mattering. The build keeps them on request:
 
 ```bash
-systemextensionsctl developer on
+make -C driver ADHOC_ENTITLEMENTS=1
 ```
 
-It does not substitute for the entitlements, which Apple still has to
-grant.
+That app will **not** launch on a normal Mac -- it is for a machine
+prepared like this:
+
+1. **Apple Silicon only:** shut down, hold the power button until
+   "Loading startup options", then Options → Utilities → Startup
+   Security Utility → pick your disk → Security Policy → **Permissive
+   Security**.
+2. In recoveryOS, Utilities → Terminal: `csrutil disable`
+3. Boot normally, then
+   `sudo nvram boot-args="amfi_get_out_of_my_way=0x1"` and reboot.
+4. `systemextensionsctl developer on`
+
+To undo it afterwards: `sudo nvram -d boot-args`, `csrutil enable` from
+recoveryOS, and set the security policy back to **Full Security**.
+
+> [!WARNING]
+> This disables System Integrity Protection and code-signing
+> enforcement for the whole machine, not just for this driver. Every
+> program you run loses those protections. It is reasonable on a
+> machine you develop on and a bad idea on one you keep your life in.
+
+Two honest caveats. First, this has **not been verified** -- nobody has
+run this driver on a prepared machine yet, so these steps are the known
+procedure, not a tested recipe. Second, it gets *you* to a working
+driver at best; it does nothing for anyone else, since they would have
+to lower their own machine the same way. Shipping still needs Apple.
 
 ## How it works
 

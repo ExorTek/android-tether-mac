@@ -135,8 +135,17 @@ SIGN_ID ?= -
 # The extension keeps its entitlements either way. It is never launched
 # directly, so they cost nothing there, and `codesign -d --entitlements`
 # on it stays an honest statement of what the driver needs.
+# ADHOC_ENTITLEMENTS=1 keeps them anyway. That is only useful on a
+# machine with AMFI disabled, where entitlements are not checked and so
+# an unauthorised one neither blocks the launch nor needs authorising.
+# It is the development path for testing your own driver without an
+# Apple Developer account; see README.md, including what it costs.
 ifeq ($(SIGN_ID),-)
-  APP_ENTITLEMENT_FLAGS :=
+  ifeq ($(ADHOC_ENTITLEMENTS),1)
+    APP_ENTITLEMENT_FLAGS := --entitlements $(BUILD)/Installer.entitlements
+  else
+    APP_ENTITLEMENT_FLAGS :=
+  endif
 else
   APP_ENTITLEMENT_FLAGS := --entitlements $(BUILD)/Installer.entitlements
 endif
@@ -265,11 +274,19 @@ $(APP): $(OBJ)/main.o ../app/Info.plist $(BUILD)/Installer.entitlements $(DEXT)
 	$(CODESIGN) --force --sign "$(SIGN_ID)" --timestamp=none \
 	    $(APP_ENTITLEMENT_FLAGS) --options runtime $(APP)
 ifeq ($(SIGN_ID),-)
+ifeq ($(ADHOC_ENTITLEMENTS),1)
+	@echo
+	@echo "  Ad-hoc build WITH entitlements. This app will not launch unless"
+	@echo "  AMFI is disabled on this machine. See README.md."
+	@echo
+else
 	@echo
 	@echo "  Ad-hoc build: the app is signed without its entitlements, so it"
 	@echo "  will start and show its window. Installing the driver needs a"
-	@echo "  provisioning profile; see README.md."
+	@echo "  provisioning profile, or a machine with AMFI disabled; see"
+	@echo "  README.md."
 	@echo
+endif
 endif
 
 clean:
