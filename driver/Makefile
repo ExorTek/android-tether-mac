@@ -75,15 +75,13 @@ DEXT_CFLAGS := \
 	-target $(DEXT_TARGET) $(DEXT_INCLUDES) \
 	-std=c11 -fno-builtin -fno-common -Wall -Wextra -O2 -g
 
-# The DriverKit C runtime has been named both ways across SDKs; pick
-# whichever this one actually ships rather than hard-coding a guess that
-# breaks on the next Xcode.
-DEXT_CRT := $(if $(wildcard $(DRIVERKIT_SDK)/System/DriverKit/usr/lib/libCRTEndClient_driverkit.a),\
-                 -lCRTEndClient_driverkit,-lCRTEndClient)
-
+# No -nostdlib, and no naming the DriverKit C runtime by hand. Clang's
+# driverkit target knows which startup object and libraries a dext needs;
+# -nostdlib only moves that job here, where the library's name has to be
+# guessed and has in fact been spelled differently across SDKs.
 DEXT_LDFLAGS := \
 	-target $(DEXT_TARGET) -isysroot $(DRIVERKIT_SDK) \
-	-framework DriverKit -nostdlib $(DEXT_CRT)
+	-framework DriverKit
 
 APP_CFLAGS := \
 	-isysroot $(MACOS_SDK) -mmacosx-version-min=13.0 \

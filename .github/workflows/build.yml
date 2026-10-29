@@ -43,6 +43,9 @@ jobs:
           # iig's own options are not documented anywhere public, and the
           # errors it gives for a wrong one are misleading. Print them.
           "$(xcrun --sdk driverkit -f iig)" --help || true
+          # What the SDK actually ships to link against, so a link error
+          # is answered from the runner rather than from memory.
+          ls "$(xcrun --sdk driverkit --show-sdk-path)/System/DriverKit/usr/lib/" | head -40
 
       # Ad-hoc signed. The DriverKit entitlements are unauthorised without
       # a provisioning profile, so this proves the driver builds, links
