@@ -92,80 +92,118 @@ jobs:
           rm -f "$RUNNER_TEMP/cert.p12"
           echo "available=true" >> "$GITHUB_OUTPUT"
 
-      - name: Build
+      # One build per architecture rather than one universal build. The
+      # Makefile's defaults are overridden on the command line, and each
+      # goes to its own BUILD directory so the two never share objects.
+      - name: Build both architectures
         working-directory: driver
         env:
           SIGNED: ${{ steps.signing.outputs.available }}
+          SIGN_APP: ${{ secrets.MACOS_SIGN_APP }}
         run: |
-          if [ "$SIGNED" = "true" ]; then
-            make all SIGN_ID="${{ secrets.MACOS_SIGN_APP }}"
-          else
-            make all
-          fi
+          set -euo pipefail
+          build_one() {
+            args=(BUILD="$1" DEXT_ARCHS="$2" APP_ARCHS="$3")
+            if [ "$SIGNED" = "true" ]; then
+              args+=(SIGN_ID="$SIGN_APP")
+            fi
+            make all "${args[@]}"
+          }
+          # arm64e for the extension, arm64 for the app: arm64e is a
+          # DriverKit requirement, not an application one.
+          build_one build-applesilicon arm64e arm64
+          build_one build-intel        x86_64 x86_64
 
+          for d in build-applesilicon build-intel; do
+            echo "== $d"
+            lipo -info "$d/com.exortek.androidtether.driver.dext/com.exortek.androidtether.driver"
+            lipo -info "$d/AndroidTether.app/Contents/MacOS/AndroidTether"
+          done
+
+      # A .app is a directory, so it has to travel inside something. A
+      # disk image is what macOS users expect: open it and drag the app
+      # across, with the Applications symlink right there to drop it on.
+      - name: Build the disk images
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          make_dmg() {
+            app="$1"; label="$2"
+            stage="$(mktemp -d)"
+            cp -R "$app" "$stage/"
+            ln -s /Applications "$stage/Applications"
+            hdiutil create -volname "AndroidTether" -srcfolder "$stage" \
+                -ov -format UDZO \
+                "dist/AndroidTether-${{ steps.version.outputs.version }}-$label.dmg"
+          }
+          make_dmg driver/build-applesilicon/AndroidTether.app AppleSilicon-arm64e
+          make_dmg driver/build-intel/AndroidTether.app        Intel-x86_64
+
+      # Notarizing the disk image covers the app inside it, and stapling
+      # the image means it opens without a round trip to Apple.
       - name: Notarize
         if: steps.signing.outputs.available == 'true'
         run: |
-          mkdir -p dist
-          ditto -c -k --keepParent driver/build/AndroidTether.app \
-                "$RUNNER_TEMP/notarize.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
-              --apple-id "${{ secrets.MACOS_NOTARY_APPLE_ID }}" \
-              --team-id "${{ secrets.MACOS_NOTARY_TEAM_ID }}" \
-              --password "${{ secrets.MACOS_NOTARY_PASSWORD }}" \
-              --wait
-          xcrun stapler staple driver/build/AndroidTether.app
-
-      - name: Package
-        run: |
-          mkdir -p dist
-          # ditto, not zip: it preserves the bundle's symlinks and,
-          # critically, the code signature.
-          ditto -c -k --keepParent driver/build/AndroidTether.app \
-                dist/AndroidTether-${{ steps.version.outputs.version }}.zip
+          set -euo pipefail
+          for dmg in dist/*.dmg; do
+            xcrun notarytool submit "$dmg" \
+                --apple-id "${{ secrets.MACOS_NOTARY_APPLE_ID }}" \
+                --team-id "${{ secrets.MACOS_NOTARY_TEAM_ID }}" \
+                --password "${{ secrets.MACOS_NOTARY_PASSWORD }}" \
+                --wait
+            xcrun stapler staple "$dmg"
+          done
 
       - name: Checksums
         run: |
           cd dist
-          shasum -a 256 * | tee SHA256SUMS.txt
+          shasum -a 256 *.dmg | tee SHA256SUMS.txt
 
       - name: Compose the release notes
         env:
           SIGNED: ${{ steps.signing.outputs.available }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           {
             if [ "$SIGNED" != "true" ]; then
               echo "> [!CAUTION]"
-              echo "> **This build cannot be installed.** It is published for"
-              echo "> review and reproducibility only. See below."
+              echo "> **These builds cannot be installed.** They are published"
+              echo "> for review and reproducibility only. See below."
               echo
             fi
             echo "## Download"
             echo
-            echo "\`AndroidTether-${{ steps.version.outputs.version }}.zip\` -- macOS 13 and later, Apple Silicon or Intel."
+            echo "macOS 13 Ventura or later."
+            echo
+            echo "| Your Mac | Download |"
+            echo "|---|---|"
+            echo "| Apple Silicon (M1 and later) | \`AndroidTether-$VERSION-AppleSilicon-arm64e.dmg\` |"
+            echo "| Intel | \`AndroidTether-$VERSION-Intel-x86_64.dmg\` |"
+            echo
+            echo "Not sure which you have? Apple menu > About This Mac."
             echo
             if [ "$SIGNED" = "true" ]; then
-              echo "Unzip it, move **AndroidTether.app** into your Applications"
-              echo "folder, and open it. Installing from anywhere else is refused"
-              echo "by macOS. Keep the app: deleting it removes the driver."
+              echo "Open the disk image and drag **AndroidTether.app** onto the"
+              echo "Applications folder beside it, then open it from there."
+              echo "Installing from anywhere else is refused by macOS. Keep the"
+              echo "app: deleting it removes the driver."
             else
               # No install instructions for a build that cannot be installed.
-              # Printing them anyway contradicts the warning above it and
-              # sends the reader off to do something that will not work.
-              echo "The archive holds **AndroidTether.app** with the system"
+              echo "Each image holds **AndroidTether.app** with the system"
               echo "extension inside it, exactly as CI built it. You can inspect"
               echo "it (\`codesign -dv --entitlements -\`), but macOS will not"
-              echo "load the driver -- see the warning below."
+              echo "open it -- see the warning below."
             fi
             echo
             if [ "$SIGNED" != "true" ]; then
               echo "> [!WARNING]"
-              echo "> **This build is unsigned, and the driver has never been run"
-              echo "> against a phone.** CI had no Apple signing identity, and the"
-              echo "> three DriverKit entitlements the extension needs have not been"
-              echo "> granted by Apple, so macOS refuses to load it whatever it is"
-              echo "> signed with. It is published so the build is reproducible and"
-              echo "> reviewable, not because it works."
+              echo "> **These builds are unsigned, and the driver has never been"
+              echo "> run against a phone.** CI had no Apple signing identity, so"
+              echo "> Gatekeeper refuses to open the app at all; and the three"
+              echo "> DriverKit entitlements the extension needs have not been"
+              echo "> granted by Apple, so the driver would not load even past"
+              echo "> that. They are published so the build is reproducible and"
+              echo "> reviewable, not because they work."
               echo "> See the README for what Apple has to approve first."
               echo
             fi

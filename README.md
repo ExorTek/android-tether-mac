@@ -79,12 +79,16 @@ version it was built against.
 
 ### Architectures
 
-The download is universal. One archive works on both kinds of Mac:
+Releases ship one disk image per kind of Mac:
 
-| Component | Apple Silicon | Intel |
-|---|---|---|
-| System extension | `arm64e` | `x86_64` |
-| Installer app | `arm64` | `x86_64` |
+| Your Mac | Download | Extension | App |
+|---|---|---|---|
+| Apple Silicon | `...-AppleSilicon-arm64e.dmg` | `arm64e` | `arm64` |
+| Intel | `...-Intel-x86_64.dmg` | `x86_64` | `x86_64` |
+
+Building locally gives you a universal binary covering both, which is
+the default and is what CI checks; the split is only in what gets
+published.
 
 The extension's Apple Silicon slice must be **arm64e**, not plain
 `arm64`. A plain `arm64` dext stages and activates and then fails to
@@ -98,10 +102,10 @@ extension instead of failing.
 
 ## Installing
 
-Once there are signed releases, installation is: unzip, drag
-**AndroidTether.app** to `/Applications`, open it, click **Install
-Driver**, and approve the extension in **System Settings › Privacy &
-Security**.
+Once there are signed releases, installation is: open the disk image for
+your Mac, drag **AndroidTether.app** onto the Applications folder beside
+it, open it from there, click **Install Driver**, and approve the
+extension in **System Settings › Privacy & Security**.
 
 The app has to stay in `/Applications`. macOS deactivates a system
 extension whose host app is gone, so deleting the app is also how you
