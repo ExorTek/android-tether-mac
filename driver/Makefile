@@ -25,6 +25,11 @@ APP_NAME   := AndroidTether
 BUILD      := build
 OBJ        := $(BUILD)/obj
 GEN        := $(BUILD)/gen
+# iig was given --framework-name, so the glue it generates includes the
+# header as <AndroidTetherDriver/AndroidTetherDriver.h>. Generating into
+# a directory of that name makes both that include and our own plain
+# "AndroidTetherDriver.h" resolve, with no edits to generated code.
+GENINC     := $(GEN)/AndroidTetherDriver
 DEXT       := $(BUILD)/$(DRIVER_ID).dext
 APP        := $(BUILD)/$(APP_NAME).app
 
@@ -57,7 +62,7 @@ DEXT_DEPLOYMENT := 22.0
 DEXT_TARGET     := arm64e-apple-driverkit$(DEXT_DEPLOYMENT)
 
 DEXT_INCLUDES := \
-	-isysroot $(DRIVERKIT_SDK) -I$(GEN) -I. -I../rndis
+	-isysroot $(DRIVERKIT_SDK) -I$(GEN) -I$(GENINC) -I. -I../rndis
 
 IIG_CLANG_FLAGS := $(DEXT_INCLUDES) -x c++ -std=gnu++17 -D__IIG=1
 
@@ -133,10 +138,10 @@ all: app
 #    with "-target is only permitted with an unknown arch". The platform
 #    comes from --deployment-target instead. The compiler proper does
 #    get -target; only iig does not.
-$(GEN)/AndroidTetherDriver.h $(GEN)/AndroidTetherDriver.iig.cpp: AndroidTetherDriver.iig
-	@mkdir -p $(GEN)
+$(GENINC)/AndroidTetherDriver.h $(GEN)/AndroidTetherDriver.iig.cpp: AndroidTetherDriver.iig
+	@mkdir -p $(GENINC)
 	$(IIG) --def AndroidTetherDriver.iig \
-	       --header $(GEN)/AndroidTetherDriver.h \
+	       --header $(GENINC)/AndroidTetherDriver.h \
 	       --impl $(GEN)/AndroidTetherDriver.iig.cpp \
 	       --framework-name AndroidTetherDriver \
 	       --deployment-target $(DEXT_DEPLOYMENT) \
@@ -144,7 +149,7 @@ $(GEN)/AndroidTetherDriver.h $(GEN)/AndroidTetherDriver.iig.cpp: AndroidTetherDr
 
 # ---- the extension ------------------------------------------------
 
-$(OBJ)/%.o: %.cpp $(GEN)/AndroidTetherDriver.h
+$(OBJ)/%.o: %.cpp $(GENINC)/AndroidTetherDriver.h
 	@mkdir -p $(OBJ)
 	$(CXX) $(DEXT_CXXFLAGS) -c $< -o $@
 
