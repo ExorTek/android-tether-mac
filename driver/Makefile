@@ -56,23 +56,43 @@ CXX       := $(shell xcrun --sdk driverkit -f clang++)
 CC        := $(shell xcrun --sdk macosx -f clang)
 CODESIGN  := $(shell xcrun -f codesign)
 
-# arm64e is not optional. A dext built for plain arm64 stages, activates,
-# and then fails to launch -- with a message that does not say why.
 DEXT_DEPLOYMENT := 22.0
-DEXT_TARGET     := arm64e-apple-driverkit$(DEXT_DEPLOYMENT)
+
+# Both architectures, so one download works on an Intel Mac and on Apple
+# Silicon.
+#
+# On Apple Silicon the slice must be arm64e, not arm64: a plain arm64
+# dext stages, activates, and then fails to launch, with a message that
+# does not say why. Intel Macs take x86_64. The app is ordinary arm64 --
+# arm64e is a dext requirement, not an application one.
+#
+# Which of these the SDK can still build for is asked of the SDK rather
+# than assumed. Apple retires architectures as hardware ages, and a
+# hard-coded x86_64 would turn into an opaque link failure the first
+# time Xcode stops shipping it.
+SDK_ARCHS := $(shell plutil -extract SupportedTargets.driverkit.Archs json -o - \
+                 "$(DRIVERKIT_SDK)/SDKSettings.plist" 2>/dev/null | tr -d '[]" ' | tr ',' ' ')
+DEXT_ARCHS := $(if $(strip $(SDK_ARCHS)),$(filter arm64e x86_64,$(SDK_ARCHS)),arm64e x86_64)
+APP_ARCHS  := arm64 x86_64
+
+ifeq ($(strip $(DEXT_ARCHS)),)
+  $(error This DriverKit SDK reports no architecture we can build: $(SDK_ARCHS))
+endif
 
 DEXT_INCLUDES := \
 	-isysroot $(DRIVERKIT_SDK) -I$(GEN) -I$(GENINC) -I. -I../rndis
 
 IIG_CLANG_FLAGS := $(DEXT_INCLUDES) -x c++ -std=gnu++17 -D__IIG=1
 
+# No -target here: it names exactly one architecture, so it is added
+# per slice below.
 DEXT_CXXFLAGS := \
-	-target $(DEXT_TARGET) $(DEXT_INCLUDES) \
+	$(DEXT_INCLUDES) \
 	-std=gnu++17 -fno-exceptions -fno-rtti -fno-builtin -fno-common \
 	-Wall -Wextra -Wno-unused-parameter -O2 -g
 
 DEXT_CFLAGS := \
-	-target $(DEXT_TARGET) $(DEXT_INCLUDES) \
+	$(DEXT_INCLUDES) \
 	-std=c11 -fno-builtin -fno-common -Wall -Wextra -O2 -g
 
 # No -nostdlib, and no naming the DriverKit C runtime by hand. Clang's
@@ -84,14 +104,18 @@ DEXT_CFLAGS := \
 # IOUserNetworkEthernet vtable, both of which the generated glue
 # references. Including a framework's headers does not link it.
 DEXT_LDFLAGS := \
-	-target $(DEXT_TARGET) -isysroot $(DRIVERKIT_SDK) \
+	-isysroot $(DRIVERKIT_SDK) \
 	-framework DriverKit -framework USBDriverKit -framework NetworkingDriverKit
 
+# The macOS driver understands several -arch flags in one invocation and
+# produces a universal binary itself, so the app needs no lipo step.
+APP_ARCHFLAGS := $(addprefix -arch ,$(APP_ARCHS))
+
 APP_CFLAGS := \
-	-isysroot $(MACOS_SDK) -mmacosx-version-min=13.0 \
+	$(APP_ARCHFLAGS) -isysroot $(MACOS_SDK) -mmacosx-version-min=13.0 \
 	-fobjc-arc -Wall -Wextra -Wno-unused-parameter -O2 -g
 APP_LDFLAGS := \
-	-isysroot $(MACOS_SDK) -mmacosx-version-min=13.0 \
+	$(APP_ARCHFLAGS) -isysroot $(MACOS_SDK) -mmacosx-version-min=13.0 \
 	-framework AppKit -framework Foundation -framework SystemExtensions
 
 # ---- signing ------------------------------------------------------
@@ -113,12 +137,15 @@ TEAM_ID ?= 0000000000
 DEXT_CXX_SRCS := AndroidTetherDriver.cpp AndroidTetherDriver_datapath.cpp
 DEXT_C_SRCS   := ../rndis/rndis_frame.c ../rndis/rndis_control.c
 
-DEXT_OBJS := \
-	$(OBJ)/AndroidTetherDriver.o \
-	$(OBJ)/AndroidTetherDriver_datapath.o \
-	$(OBJ)/AndroidTetherDriver.iig.o \
-	$(OBJ)/rndis_frame.o \
-	$(OBJ)/rndis_control.o
+DEXT_OBJ_NAMES := \
+	AndroidTetherDriver.o \
+	AndroidTetherDriver_datapath.o \
+	AndroidTetherDriver.iig.o \
+	rndis_frame.o \
+	rndis_control.o
+
+# One slice per architecture, lipo'd together at the end.
+DEXT_SLICES := $(foreach a,$(DEXT_ARCHS),$(BUILD)/slice-$(a))
 
 .PHONY: all dext app clean
 all: app
@@ -140,7 +167,15 @@ all: app
 #    with "-target is only permitted with an unknown arch". The platform
 #    comes from --deployment-target instead. The compiler proper does
 #    get -target; only iig does not.
-$(GENINC)/AndroidTetherDriver.h $(GEN)/AndroidTetherDriver.iig.cpp: AndroidTetherDriver.iig
+#
+# Only the header carries the recipe. A rule with two targets is two
+# rules in GNU make, so writing both here would run iig once per target
+# -- wasteful in series and a race under `make -j`, where two iig
+# processes would write the same files at once.
+$(GEN)/AndroidTetherDriver.iig.cpp: $(GENINC)/AndroidTetherDriver.h
+	@:
+
+$(GENINC)/AndroidTetherDriver.h: AndroidTetherDriver.iig
 	@mkdir -p $(GENINC)
 	$(IIG) --def AndroidTetherDriver.iig \
 	       --header $(GENINC)/AndroidTetherDriver.h \
@@ -149,19 +184,30 @@ $(GENINC)/AndroidTetherDriver.h $(GEN)/AndroidTetherDriver.iig.cpp: AndroidTethe
 	       --deployment-target $(DEXT_DEPLOYMENT) \
 	       -- $(IIG_CLANG_FLAGS)
 
-# ---- the extension ------------------------------------------------
+# ---- the extension, once per architecture -------------------------
+#
+# iig output is architecture-independent and so is generated once; from
+# there the same five objects are built for each slice into their own
+# directory, so the two architectures cannot collide.
+define dext_arch_rules
+$(OBJ)/$(1)/%.o: %.cpp $(GENINC)/AndroidTetherDriver.h
+	@mkdir -p $$(@D)
+	$(CXX) -target $(1)-apple-driverkit$(DEXT_DEPLOYMENT) $(DEXT_CXXFLAGS) -c $$< -o $$@
 
-$(OBJ)/%.o: %.cpp $(GENINC)/AndroidTetherDriver.h
-	@mkdir -p $(OBJ)
-	$(CXX) $(DEXT_CXXFLAGS) -c $< -o $@
+$(OBJ)/$(1)/AndroidTetherDriver.iig.o: $(GEN)/AndroidTetherDriver.iig.cpp
+	@mkdir -p $$(@D)
+	$(CXX) -target $(1)-apple-driverkit$(DEXT_DEPLOYMENT) $(DEXT_CXXFLAGS) -c $$< -o $$@
 
-$(OBJ)/AndroidTetherDriver.iig.o: $(GEN)/AndroidTetherDriver.iig.cpp
-	@mkdir -p $(OBJ)
-	$(CXX) $(DEXT_CXXFLAGS) -c $< -o $@
+$(OBJ)/$(1)/%.o: ../rndis/%.c
+	@mkdir -p $$(@D)
+	$(CXX) -x c -target $(1)-apple-driverkit$(DEXT_DEPLOYMENT) $(DEXT_CFLAGS) -c $$< -o $$@
 
-$(OBJ)/%.o: ../rndis/%.c
-	@mkdir -p $(OBJ)
-	$(CXX) -x c $(DEXT_CFLAGS) -c $< -o $@
+$(BUILD)/slice-$(1): $$(addprefix $(OBJ)/$(1)/,$(DEXT_OBJ_NAMES))
+	@mkdir -p $(BUILD)
+	$(CXX) -target $(1)-apple-driverkit$(DEXT_DEPLOYMENT) $(DEXT_LDFLAGS) $$^ -o $$@
+endef
+
+$(foreach a,$(DEXT_ARCHS),$(eval $(call dext_arch_rules,$(a))))
 
 $(BUILD)/AndroidTetherDriver.entitlements: AndroidTetherDriver.entitlements.in
 	@mkdir -p $(BUILD)
@@ -171,9 +217,10 @@ $(BUILD)/AndroidTetherDriver.entitlements: AndroidTetherDriver.entitlements.in
 # has to be named after the bundle identifier, or OSSystemExtensionRequest
 # will not find it.
 dext: $(DEXT)
-$(DEXT): $(DEXT_OBJS) Info.plist $(BUILD)/AndroidTetherDriver.entitlements
+$(DEXT): $(DEXT_SLICES) Info.plist $(BUILD)/AndroidTetherDriver.entitlements
 	@mkdir -p $(DEXT)
-	$(CXX) $(DEXT_LDFLAGS) $(DEXT_OBJS) -o $(DEXT)/$(DRIVER_ID)
+	@echo "  architectures: $(DEXT_ARCHS)"
+	lipo -create $(DEXT_SLICES) -output $(DEXT)/$(DRIVER_ID)
 	cp Info.plist $(DEXT)/Info.plist
 	$(CODESIGN) --force --sign "$(SIGN_ID)" --timestamp=none \
 	    --entitlements $(BUILD)/AndroidTetherDriver.entitlements \

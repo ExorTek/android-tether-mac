@@ -63,10 +63,38 @@ the shape of request the form is least set up for.
 
 ## Requirements
 
-- macOS 13 or later
-- Apple Silicon (the extension is built arm64e; a plain arm64 build
-  stages, activates, and then fails to launch)
-- An Android phone with USB tethering
+| | |
+|---|---|
+| **macOS** | 13 Ventura or later |
+| **Mac** | Apple Silicon or Intel |
+| **Phone** | Any Android device with USB tethering |
+
+macOS 13 is the floor because the extension targets DriverKit 22. Going
+lower is possible on paper -- NetworkingDriverKit dates to macOS 11 --
+but nothing below 13 has been built or tested, so the number here is the
+one that is actually true.
+
+There is no upper bound: a DriverKit extension is not tied to the macOS
+version it was built against.
+
+### Architectures
+
+The download is universal. One archive works on both kinds of Mac:
+
+| Component | Apple Silicon | Intel |
+|---|---|---|
+| System extension | `arm64e` | `x86_64` |
+| Installer app | `arm64` | `x86_64` |
+
+The extension's Apple Silicon slice must be **arm64e**, not plain
+`arm64`. A plain `arm64` dext stages and activates and then fails to
+launch, with a message that does not explain why. The app has no such
+requirement -- arm64e is a DriverKit rule, not an application one.
+
+The build asks the installed SDK which architectures it can still
+produce rather than assuming both, so when Apple eventually drops
+`x86_64` from the DriverKit SDK this builds an Apple-Silicon-only
+extension instead of failing.
 
 ## Installing
 

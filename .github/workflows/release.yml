@@ -142,7 +142,7 @@ jobs:
             fi
             echo "## Download"
             echo
-            echo "\`AndroidTether-${{ steps.version.outputs.version }}.zip\` -- macOS 13 and later, Apple Silicon."
+            echo "\`AndroidTether-${{ steps.version.outputs.version }}.zip\` -- macOS 13 and later, Apple Silicon or Intel."
             echo
             if [ "$SIGNED" = "true" ]; then
               echo "Unzip it, move **AndroidTether.app** into your Applications"

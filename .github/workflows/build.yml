@@ -62,7 +62,15 @@ jobs:
           test -f build/com.exortek.androidtether.driver.dext/com.exortek.androidtether.driver
           test -f build/com.exortek.androidtether.driver.dext/Info.plist
           test -d build/AndroidTether.app/Contents/Library/SystemExtensions/com.exortek.androidtether.driver.dext
-          lipo -info build/com.exortek.androidtether.driver.dext/com.exortek.androidtether.driver
+
+          # The extension must carry arm64e, not plain arm64: a plain
+          # arm64 dext activates and then fails to launch. Assert it
+          # rather than eyeballing the log.
+          dext=build/com.exortek.androidtether.driver.dext/com.exortek.androidtether.driver
+          lipo -info "$dext"
+          lipo -info build/AndroidTether.app/Contents/MacOS/AndroidTether
+          lipo -info "$dext" | grep -qw arm64e \
+            || { echo "::error::the extension has no arm64e slice"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:
