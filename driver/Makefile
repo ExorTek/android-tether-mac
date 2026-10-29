@@ -122,6 +122,25 @@ APP_LDFLAGS := \
 
 SIGN_ID ?= -
 
+# An ad-hoc build gets no entitlements on the app.
+#
+# The app's entitlements are restricted ones that only a provisioning
+# profile can authorise. Signing an ad-hoc build with them does not
+# merely fail to grant anything -- AMFI refuses to launch the binary at
+# all, with "Launchd job spawn failed" and POSIX error 163, before any
+# code runs. Leaving them off lets the unsigned build start and show
+# its window, which is the only useful thing it could do anyway: the
+# system extension still will not install.
+#
+# The extension keeps its entitlements either way. It is never launched
+# directly, so they cost nothing there, and `codesign -d --entitlements`
+# on it stays an honest statement of what the driver needs.
+ifeq ($(SIGN_ID),-)
+  APP_ENTITLEMENT_FLAGS :=
+else
+  APP_ENTITLEMENT_FLAGS := --entitlements $(BUILD)/Installer.entitlements
+endif
+
 # A .mobileprovision dropped next to this Makefile carries the Team ID;
 # pull it out rather than asking anyone to edit a file they would then
 # have to remember not to commit.
@@ -244,8 +263,14 @@ $(APP): $(OBJ)/main.o ../app/Info.plist $(BUILD)/Installer.entitlements $(DEXT)
 	rm -rf $(APP)/Contents/Library/SystemExtensions/$(DRIVER_ID).dext
 	cp -R $(DEXT) $(APP)/Contents/Library/SystemExtensions/
 	$(CODESIGN) --force --sign "$(SIGN_ID)" --timestamp=none \
-	    --entitlements $(BUILD)/Installer.entitlements \
-	    --options runtime $(APP)
+	    $(APP_ENTITLEMENT_FLAGS) --options runtime $(APP)
+ifeq ($(SIGN_ID),-)
+	@echo
+	@echo "  Ad-hoc build: the app is signed without its entitlements, so it"
+	@echo "  will start and show its window. Installing the driver needs a"
+	@echo "  provisioning profile; see README.md."
+	@echo
+endif
 
 clean:
 	rm -rf $(BUILD)

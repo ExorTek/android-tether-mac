@@ -132,12 +132,38 @@ pass your identity:
 make -C driver SIGN_ID="Developer ID Application: NAME (TEAMID)"
 ```
 
+### What an unsigned build can and cannot do
+
+An ad-hoc build is signed **without the app's entitlements**, on purpose.
+Those entitlements are restricted ones that only a provisioning profile
+can authorise, and signing a binary with entitlements it is not
+authorised for does not merely fail to grant them: AMFI refuses to
+launch it at all, before any code runs, with
+
+```
+Launch failed ... Launchd job spawn failed (POSIX error 163)
+```
+
+Left off, the app starts and shows its window. That is the whole of what
+an unsigned build can do -- clicking **Install Driver** will fail,
+because installing a system extension is exactly the thing the missing
+entitlement authorises.
+
+A build downloaded from Releases will not even get that far: macOS
+quarantines downloaded files, and Gatekeeper refuses an app that is not
+notarized ("Apple could not verify ... is free of malware"). Build
+locally if you want to see the app run; nothing you can do to the
+download makes the driver load.
+
 To run an unapproved build during development, Apple's developer mode
-relaxes the signing requirement:
+relaxes the signing requirement for the extension:
 
 ```bash
 systemextensionsctl developer on
 ```
+
+It does not substitute for the entitlements, which Apple still has to
+grant.
 
 ## How it works
 
