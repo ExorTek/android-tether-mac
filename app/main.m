@@ -29,7 +29,7 @@ static NSString *const kDriverBundleID = @"com.exortek.androidtether.driver";
 
 @implementation TetherInstaller
 
-- (void)setStatus:(NSString *)text
+- (void)showStatus:(NSString *)text
 {
     dispatch_async(dispatch_get_main_queue(), ^{
         self.status.stringValue = text;
@@ -87,7 +87,7 @@ static NSString *const kDriverBundleID = @"com.exortek.androidtether.driver";
 
 - (void)install:(id)sender
 {
-    [self setStatus:@"Requesting activation..."];
+    [self showStatus:@"Requesting activation..."];
 
     OSSystemExtensionRequest *request = [OSSystemExtensionRequest
         activationRequestForExtension:kDriverBundleID
@@ -112,7 +112,7 @@ static NSString *const kDriverBundleID = @"com.exortek.androidtether.driver";
 
 - (void)requestNeedsUserApproval:(OSSystemExtensionRequest *)request
 {
-    [self setStatus:@"Waiting for approval in System Settings > "
+    [self showStatus:@"Waiting for approval in System Settings > "
                     @"Privacy & Security."];
 }
 
@@ -120,15 +120,15 @@ static NSString *const kDriverBundleID = @"com.exortek.androidtether.driver";
     didFinishWithResult:(OSSystemExtensionRequestResult)result
 {
     if (result == OSSystemExtensionRequestWillCompleteAfterReboot) {
-        [self setStatus:@"Installed. Restart to finish."];
+        [self showStatus:@"Installed. Restart to finish."];
         return;
     }
-    [self setStatus:@"Installed. Connect your phone and turn on USB tethering."];
+    [self showStatus:@"Installed. Connect your phone and turn on USB tethering."];
 }
 
 - (void)request:(OSSystemExtensionRequest *)request didFailWithError:(NSError *)error
 {
-    [self setStatus:[NSString stringWithFormat:@"Failed: %@",
+    [self showStatus:[NSString stringWithFormat:@"Failed: %@",
                                                error.localizedDescription]];
 }
 

@@ -53,13 +53,13 @@ CODESIGN  := $(shell xcrun -f codesign)
 
 # arm64e is not optional. A dext built for plain arm64 stages, activates,
 # and then fails to launch -- with a message that does not say why.
-DEXT_TARGET := arm64e-apple-driverkit22.0
+DEXT_DEPLOYMENT := 22.0
+DEXT_TARGET     := arm64e-apple-driverkit$(DEXT_DEPLOYMENT)
 
 DEXT_INCLUDES := \
-	-isysroot $(DRIVERKIT_SDK) \
-	-iframework $(DRIVERKIT_SDK)/System/DriverKit/System/Library/Frameworks \
-	-isystem $(DRIVERKIT_SDK)/System/DriverKit/usr/include \
-	-I$(GEN) -I. -I../rndis
+	-isysroot $(DRIVERKIT_SDK) -I$(GEN) -I. -I../rndis
+
+IIG_CLANG_FLAGS := $(DEXT_INCLUDES) -x c++ -std=gnu++17 -D__IIG=1
 
 DEXT_CXXFLAGS := \
 	-target $(DEXT_TARGET) $(DEXT_INCLUDES) \
@@ -70,11 +70,15 @@ DEXT_CFLAGS := \
 	-target $(DEXT_TARGET) $(DEXT_INCLUDES) \
 	-std=c11 -fno-builtin -fno-common -Wall -Wextra -O2 -g
 
+# The DriverKit C runtime has been named both ways across SDKs; pick
+# whichever this one actually ships rather than hard-coding a guess that
+# breaks on the next Xcode.
+DEXT_CRT := $(if $(wildcard $(DRIVERKIT_SDK)/System/DriverKit/usr/lib/libCRTEndClient_driverkit.a),\
+                 -lCRTEndClient_driverkit,-lCRTEndClient)
+
 DEXT_LDFLAGS := \
 	-target $(DEXT_TARGET) -isysroot $(DRIVERKIT_SDK) \
-	-F$(DRIVERKIT_SDK)/System/DriverKit/System/Library/Frameworks \
-	-L$(DRIVERKIT_SDK)/System/DriverKit/usr/lib \
-	-framework DriverKit -nostdlib -lCRTEndClient_driverkit
+	-framework DriverKit -nostdlib $(DEXT_CRT)
 
 APP_CFLAGS := \
 	-isysroot $(MACOS_SDK) -mmacosx-version-min=13.0 \
@@ -116,13 +120,27 @@ all: app
 
 # iig turns the .iig into a header the driver includes and a .cpp holding
 # the dispatch glue. Both are generated; neither is committed.
+#
+# Two things about the flags after the `--`, both learned the hard way:
+#
+#  * -D__IIG=1 is required. The DriverKit headers gate their annotation
+#    macros -- KERNEL, NATIVE, EXTENDS, LOCALONLY -- on it. Without it
+#    those expand to nothing recognisable and iig fails *inside Apple's
+#    own OSObject.iig* with "variable has incomplete type 'class
+#    KERNEL'", which reads like a broken SDK and is not.
+#
+#  * -target must NOT be passed. iig parses it itself and rejects it
+#    with "-target is only permitted with an unknown arch". The platform
+#    comes from --deployment-target instead. The compiler proper does
+#    get -target; only iig does not.
 $(GEN)/AndroidTetherDriver.h $(GEN)/AndroidTetherDriver.iig.cpp: AndroidTetherDriver.iig
 	@mkdir -p $(GEN)
 	$(IIG) --def AndroidTetherDriver.iig \
 	       --header $(GEN)/AndroidTetherDriver.h \
 	       --impl $(GEN)/AndroidTetherDriver.iig.cpp \
 	       --framework-name AndroidTetherDriver \
-	       -- $(DEXT_INCLUDES) -x c++ -std=gnu++17
+	       --deployment-target $(DEXT_DEPLOYMENT) \
+	       -- $(IIG_CLANG_FLAGS)
 
 # ---- the extension ------------------------------------------------
 

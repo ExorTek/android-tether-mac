@@ -18,9 +18,9 @@
 
 #include <os/log.h>
 #include <string.h>
+#include <time.h>              /* clock_gettime_nsec_np, CLOCK_UPTIME_RAW */
 
 #include <DriverKit/IOLib.h>
-#include <USBDriverKit/USBDriverKitDefs.h>
 
 #include "AndroidTetherDriver.h"
 #include "AndroidTetherDriver_ivars.h"
@@ -189,13 +189,19 @@ IMPL(AndroidTetherDriver, ReadComplete)
     if (status == kIOReturnAborted)
         return;     /* the interface is going down; SubmitReads would fight it */
 
-    if (status == kIOUSBPipeStalled) {
-        ATDLog("the receive pipe stalled; clearing");
+    if (status == kIOReturnSuccess) {
+        if (actualByteCount > 0)
+            DeliverFrames(ivars->rxBytes[slot], actualByteCount);
+    } else {
+        /*
+         * A bulk endpoint halts on any I/O error except a timeout, and
+         * stays halted until it is cleared -- every later transfer on it
+         * fails the same way. Clearing unconditionally is simpler than
+         * testing for the halt and matches the documented behaviour; on
+         * an endpoint that is not halted it is a no-op.
+         */
+        ATDLog("a read failed: 0x%08x; clearing the pipe", status);
         ivars->inPipe->ClearStall(true);
-    } else if (status != kIOReturnSuccess) {
-        ATDLog("a read failed: 0x%08x", status);
-    } else if (actualByteCount > 0) {
-        DeliverFrames(ivars->rxBytes[slot], actualByteCount);
     }
 
     SubmitReads();
@@ -300,10 +306,9 @@ IMPL(AndroidTetherDriver, WriteComplete)
 
     ivars->txSlotBusy[slot] = false;
 
-    if (status == kIOUSBPipeStalled) {
-        ATDLog("the transmit pipe stalled; clearing");
+    if (status != kIOReturnSuccess && status != kIOReturnAborted) {
+        /* As on receive: clear the halt, or every later write fails too. */
+        ATDLog("a write failed: 0x%08x; clearing the pipe", status);
         ivars->outPipe->ClearStall(true);
-    } else if (status != kIOReturnSuccess && status != kIOReturnAborted) {
-        ATDLog("a write failed: 0x%08x", status);
     }
 }
