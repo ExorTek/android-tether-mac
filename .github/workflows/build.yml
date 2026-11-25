@@ -62,6 +62,9 @@ jobs:
           test -f build/com.exortek.androidtether.driver.dext/com.exortek.androidtether.driver
           test -f build/com.exortek.androidtether.driver.dext/Info.plist
           test -d build/AndroidTether.app/Contents/Library/SystemExtensions/com.exortek.androidtether.driver.dext
+          # What the Connect button runs.
+          test -x build/AndroidTether.app/Contents/MacOS/android-tether
+          codesign --verify --deep --strict build/AndroidTether.app
 
           # The extension must carry arm64e, not plain arm64: a plain
           # arm64 dext activates and then fails to launch. Assert it
@@ -71,6 +74,11 @@ jobs:
           lipo -info build/AndroidTether.app/Contents/MacOS/AndroidTether
           lipo -info "$dext" | grep -qw arm64e \
             || { echo "::error::the extension has no arm64e slice"; exit 1; }
+
+      # rndis-probe and android-tether: the extension's protocol code in
+      # user space. They need a phone to run, but not to build.
+      - name: Build the user-space tools
+        run: make probe tether
 
       - uses: actions/upload-artifact@v4
         with:

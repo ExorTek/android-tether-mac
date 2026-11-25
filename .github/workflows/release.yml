@@ -4,8 +4,10 @@
 # Copyright 2026 ExorTek
 #
 # Signing is optional and driven by repository secrets. Without them the
-# release is still produced, but it is marked clearly as unsigned: macOS
-# will not load an ad-hoc signed system extension at all.
+# release is still produced, and its Connect button and command-line
+# tools work once Gatekeeper has been told to let them run; what does not
+# is the driver, since macOS will not load an ad-hoc signed system
+# extension at all.
 #
 # To publish signed, notarized artifacts, set these repository secrets:
 #   MACOS_CERT_P12         base64 of a .p12 holding the Developer ID
@@ -120,6 +122,32 @@ jobs:
             lipo -info "$d/AndroidTether.app/Contents/MacOS/AndroidTether"
           done
 
+      # The user-space tools: the part of this project that works today.
+      # One universal binary each, since nothing about them is per-arch.
+      # Signed with the Developer ID when there is one, so a download runs
+      # without the quarantine being lifted by hand; ad-hoc otherwise.
+      - name: Build the command-line tools
+        env:
+          SIGNED: ${{ steps.signing.outputs.available }}
+          SIGN_APP: ${{ secrets.MACOS_SIGN_APP }}
+        run: |
+          set -euo pipefail
+          make probe tether ARCHS="arm64 x86_64"
+          stage="AndroidTether-tools-${{ steps.version.outputs.version }}"
+          mkdir -p "$stage" dist
+          cp tools/android-tether/build/android-tether \
+             tools/rndis-probe/build/rndis-probe LICENSE NOTICE "$stage/"
+          for tool in android-tether rndis-probe; do
+            lipo -info "$stage/$tool"
+            if [ "$SIGNED" = "true" ]; then
+              codesign --force --timestamp --options runtime \
+                  --sign "$SIGN_APP" "$stage/$tool"
+            fi
+          done
+          # ditto, not zip: it is what notarytool expects, and it keeps
+          # the signatures' extended attributes.
+          ditto -c -k --keepParent "$stage" "dist/$stage.zip"
+
       # A .app is a directory, so it has to travel inside something. A
       # disk image is what macOS users expect: open it and drag the app
       # across, with the Applications symlink right there to drop it on.
@@ -153,11 +181,20 @@ jobs:
                 --wait
             xcrun stapler staple "$dmg"
           done
+          # A zip cannot be stapled: the tools' ticket is looked up online
+          # the first time they run.
+          for zip in dist/*.zip; do
+            xcrun notarytool submit "$zip" \
+                --apple-id "${{ secrets.MACOS_NOTARY_APPLE_ID }}" \
+                --team-id "${{ secrets.MACOS_NOTARY_TEAM_ID }}" \
+                --password "${{ secrets.MACOS_NOTARY_PASSWORD }}" \
+                --wait
+          done
 
       - name: Checksums
         run: |
           cd dist
-          shasum -a 256 *.dmg | tee SHA256SUMS.txt
+          shasum -a 256 *.dmg *.zip | tee SHA256SUMS.txt
 
       - name: Compose the release notes
         env:
@@ -165,15 +202,10 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           {
-            if [ "$SIGNED" != "true" ]; then
-              echo "> [!CAUTION]"
-              echo "> **These builds cannot be installed.** They are published"
-              echo "> for review and reproducibility only. See below."
-              echo
-            fi
-            echo "## Download"
+            echo "Internet from an Android phone over USB, on macOS 13 Ventura"
+            echo "or later. Two ways to get it; both do the same thing."
             echo
-            echo "macOS 13 Ventura or later."
+            echo "## The app"
             echo
             echo "| Your Mac | Download |"
             echo "|---|---|"
@@ -182,35 +214,56 @@ jobs:
             echo
             echo "Not sure which you have? Apple menu > About This Mac."
             echo
-            if [ "$SIGNED" = "true" ]; then
-              echo "Open the disk image and drag **AndroidTether.app** onto the"
-              echo "Applications folder beside it, then open it from there."
-              echo "Installing from anywhere else is refused by macOS. Keep the"
-              echo "app: deleting it removes the driver."
+            echo "1. Open the disk image and drag **AndroidTether.app** onto the"
+            echo "   Applications folder beside it."
+            if [ "$SIGNED" != "true" ]; then
+              echo "2. Open it. macOS will refuse the first time, because this"
+              echo "   build is not signed with an Apple Developer ID. Go to"
+              echo "   **System Settings > Privacy & Security**, scroll down, and"
+              echo "   click **Open Anyway**. This is needed once."
             else
-              # No install instructions for a build that cannot be installed.
-              echo "Each image holds **AndroidTether.app** with the system"
-              echo "extension inside it, exactly as CI built it. You can inspect"
-              echo "it (\`codesign -dv --entitlements -\`), but macOS will not"
-              echo "open it -- see the warning below."
+              echo "2. Open it from Applications."
             fi
+            echo "3. Plug the phone in, turn on **USB tethering** on it, and click"
+            echo "   **Connect**. macOS asks for an administrator's password each"
+            echo "   time, because creating a network interface needs one."
+            echo
+            echo "## The command line"
+            echo
+            echo "\`AndroidTether-tools-$VERSION.zip\` holds the same bridge as a"
+            echo "command-line tool, and \`rndis-probe\`, which tests a phone"
+            echo "without changing anything on the Mac. Both run on Apple"
+            echo "Silicon and Intel."
+            echo
+            echo '```bash'
+            echo "cd AndroidTether-tools-$VERSION"
+            if [ "$SIGNED" != "true" ]; then
+              echo "xattr -d com.apple.quarantine android-tether rndis-probe"
+            fi
+            echo "./rndis-probe            # does this phone speak the protocol?"
+            echo "sudo ./android-tether    # online until Ctrl-C"
+            echo '```'
             echo
             if [ "$SIGNED" != "true" ]; then
-              echo "> [!WARNING]"
-              echo "> **These builds are unsigned, and the driver has never been"
-              echo "> run against a phone.** CI had no Apple signing identity, so"
-              echo "> Gatekeeper refuses to open the app at all; and the three"
-              echo "> DriverKit entitlements the extension needs have not been"
-              echo "> granted by Apple, so the driver would not load even past"
-              echo "> that. They are published so the build is reproducible and"
-              echo "> reviewable, not because they work."
-              echo "> See the README for what Apple has to approve first."
+              echo "The \`xattr\` line is the command-line form of Open Anyway."
+              echo "Building from source (\`make tether\`) needs neither."
               echo
             fi
+            echo "## What does not work yet"
+            echo
+            echo "The **Install Driver** button in the app. The driver is a"
+            echo "DriverKit system extension, which would make the phone an"
+            echo "ordinary Ethernet interface with no password and nothing to"
+            echo "run -- and macOS will not load it until Apple grants this"
+            echo "project three restricted entitlements. Until then the button"
+            echo "reports the entitlement it is missing. See the README."
+            echo
+            echo "## Checksums"
+            echo
             echo "Verify your download against \`SHA256SUMS.txt\`:"
             echo
             echo '```bash'
-            echo "shasum -a 256 -c SHA256SUMS.txt"
+            echo "shasum -a 256 --ignore-missing -c SHA256SUMS.txt"
             echo '```'
           } > release-notes.md
           cat release-notes.md
@@ -225,8 +278,7 @@ jobs:
           # On a manual run the tag does not exist yet; this creates it at
           # the commit that was just built and tested.
           target_commitish: ${{ github.sha }}
-          # An unsigned build cannot be installed on a normally configured
-          # Mac, so it is not a release in any sense a user would expect.
-          # Marking it a pre-release keeps it off the repository's headline
-          # and out of "latest".
+          # An unsigned build makes its user argue with Gatekeeper before
+          # it opens, and its driver cannot be installed at all. Marking it
+          # a pre-release says so on the repository's front page.
           prerelease: ${{ steps.signing.outputs.available != 'true' }}
