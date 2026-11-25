@@ -118,6 +118,19 @@ APP_LDFLAGS := \
 	$(APP_ARCHFLAGS) -isysroot $(MACOS_SDK) -mmacosx-version-min=13.0 \
 	-framework AppKit -framework Foundation -framework SystemExtensions
 
+# android-tether, the user-space bridge, built again here for the app's
+# architectures and carried inside it: it is what the Connect button runs.
+HELPER      := android-tether
+HELPER_DIR  := ../tools/android-tether
+HELPER_SRCS := $(HELPER_DIR)/main.m $(HELPER_DIR)/netconfig.m \
+               $(HELPER_DIR)/netproto.c $(HELPER_DIR)/utun.c \
+               ../tools/common/rndis_usb.m \
+               ../rndis/rndis_control.c ../rndis/rndis_frame.c
+HELPER_HDRS := $(wildcard $(HELPER_DIR)/*.h ../tools/common/*.h ../rndis/*.h)
+HELPER_CFLAGS := $(APP_CFLAGS) -I../rndis -I../tools/common -I$(HELPER_DIR)
+HELPER_LIBS := -framework Foundation -framework IOKit -framework IOUSBHost \
+               -framework SystemConfiguration
+
 # ---- signing ------------------------------------------------------
 
 SIGN_ID ?= -
@@ -175,7 +188,7 @@ DEXT_OBJ_NAMES := \
 # One slice per architecture, lipo'd together at the end.
 DEXT_SLICES := $(foreach a,$(DEXT_ARCHS),$(BUILD)/slice-$(a))
 
-.PHONY: all dext app clean
+.PHONY: all dext app icon clean
 all: app
 
 # ---- the generated interface --------------------------------------
@@ -264,10 +277,34 @@ $(BUILD)/Installer.entitlements: ../app/Installer.entitlements.in
 	@mkdir -p $(BUILD)
 	sed 's/__TEAM_ID__/$(TEAM_ID)/g' $< > $@
 
+$(BUILD)/$(HELPER): $(HELPER_SRCS) $(HELPER_HDRS)
+	@mkdir -p $(BUILD)
+	$(CC) $(HELPER_CFLAGS) $(HELPER_SRCS) $(HELPER_LIBS) -o $@
+
+# The icon is drawn by a program and committed as its output, so that an
+# ordinary build needs neither a window server nor this step. Run it
+# after changing ../app/make-icon.m.
+icon:
+	@mkdir -p $(BUILD)
+	$(CC) -isysroot $(MACOS_SDK) -fobjc-arc -framework AppKit \
+	    ../app/make-icon.m -o $(BUILD)/make-icon
+	rm -rf $(BUILD)/AppIcon.iconset
+	$(BUILD)/make-icon $(BUILD)/AppIcon.iconset
+	iconutil -c icns $(BUILD)/AppIcon.iconset -o ../app/AppIcon.icns
+
 app: $(APP)
-$(APP): $(OBJ)/main.o ../app/Info.plist $(BUILD)/Installer.entitlements $(DEXT)
-	@mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Library/SystemExtensions
+$(APP): $(OBJ)/main.o ../app/Info.plist ../app/AppIcon.icns \
+        $(BUILD)/Installer.entitlements $(DEXT) $(BUILD)/$(HELPER)
+	@mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources \
+	          $(APP)/Contents/Library/SystemExtensions
+	cp ../app/AppIcon.icns $(APP)/Contents/Resources/AppIcon.icns
 	$(CC) $(APP_LDFLAGS) $(OBJ)/main.o -o $(APP)/Contents/MacOS/$(APP_NAME)
+	# Nested code is signed before what contains it, and never with the
+	# app's entitlements: it asks for none.
+	cp $(BUILD)/$(HELPER) $(APP)/Contents/MacOS/$(HELPER)
+	$(CODESIGN) --force --sign "$(SIGN_ID)" --timestamp=none \
+	    --identifier $(APP_ID).helper --options runtime \
+	    $(APP)/Contents/MacOS/$(HELPER)
 	cp ../app/Info.plist $(APP)/Contents/Info.plist
 	rm -rf $(APP)/Contents/Library/SystemExtensions/$(DRIVER_ID).dext
 	cp -R $(DEXT) $(APP)/Contents/Library/SystemExtensions/
@@ -281,8 +318,8 @@ ifeq ($(ADHOC_ENTITLEMENTS),1)
 	@echo
 else
 	@echo
-	@echo "  Ad-hoc build: the app is signed without its entitlements, so it"
-	@echo "  will start and show its window. Installing the driver needs a"
+	@echo "  Ad-hoc build: the app is signed without its entitlements. It"
+	@echo "  starts, and Connect works. Installing the driver needs a"
 	@echo "  provisioning profile, or a machine with AMFI disabled; see"
 	@echo "  README.md."
 	@echo

@@ -7,6 +7,8 @@
 	<string>en</string>
 	<key>CFBundleExecutable</key>
 	<string>AndroidTether</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.exortek.androidtether</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -23,6 +25,10 @@
 	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright 2026 ExorTek. Apache License 2.0.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<!-- Required for an app that ships a system extension. -->
