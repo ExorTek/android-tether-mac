@@ -19,6 +19,8 @@ main(void)
     run_frame_tests();
     printf("\n-- RNDIS control channel --\n");
     run_control_tests();
+    printf("\n-- DHCP, ARP and IPv4 for the user-space bridge --\n");
+    run_netproto_tests();
 
     printf("\n%d checks, %d failures\n", test_checks, test_failures);
     return test_failures == 0 ? 0 : 1;

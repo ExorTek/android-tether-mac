@@ -35,5 +35,6 @@ extern int test_checks;
 
 void run_frame_tests(void);
 void run_control_tests(void);
+void run_netproto_tests(void);
 
 #endif /* TEST_UTIL_H */

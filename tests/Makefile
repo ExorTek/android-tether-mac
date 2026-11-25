@@ -9,13 +9,15 @@
 
 CC      ?= cc
 RNDIS   := ../rndis
-CFLAGS  += -std=c11 -Wall -Wextra -Werror -I$(RNDIS) -I.
+NETPROTO := ../tools/android-tether
+CFLAGS  += -std=c11 -Wall -Wextra -Werror -I$(RNDIS) -I$(NETPROTO) -I.
 BUILD   := build
 
-SRCS    := main.c test_frame.c test_control.c \
-           $(RNDIS)/rndis_frame.c $(RNDIS)/rndis_control.c
+SRCS    := main.c test_frame.c test_control.c test_netproto.c \
+           $(RNDIS)/rndis_frame.c $(RNDIS)/rndis_control.c \
+           $(NETPROTO)/netproto.c
 HDRS    := test_util.h $(RNDIS)/rndis.h $(RNDIS)/rndis_frame.h \
-           $(RNDIS)/rndis_control.h
+           $(RNDIS)/rndis_control.h $(NETPROTO)/netproto.h
 
 .PHONY: all run asan clean
 

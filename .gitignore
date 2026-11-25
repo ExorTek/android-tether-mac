@@ -2,3 +2,4 @@ build/
 .env
 localconfig.mk
 .DS_Store
+.idea/
