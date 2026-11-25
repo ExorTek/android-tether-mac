@@ -278,7 +278,9 @@ jobs:
           # On a manual run the tag does not exist yet; this creates it at
           # the commit that was just built and tested.
           target_commitish: ${{ github.sha }}
-          # An unsigned build makes its user argue with Gatekeeper before
-          # it opens, and its driver cannot be installed at all. Marking it
-          # a pre-release says so on the repository's front page.
-          prerelease: ${{ steps.signing.outputs.available != 'true' }}
+          # A release, signed or not. The app's Connect button and the
+          # tools work from an unsigned build, so there is something here
+          # for a user; what an unsigned build costs them is said in the
+          # notes, where they will read it.
+          prerelease: false
+          make_latest: true

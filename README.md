@@ -340,9 +340,10 @@ The **Release** workflow builds everything on a clean runner and
 publishes it: a disk image of the app per architecture, and
 `AndroidTether-tools-<version>.zip` with the two command-line tools as
 universal binaries. Run it from the Actions tab with a version number,
-or push a `v*` tag. Without signing secrets the result is marked a
-pre-release; with them (listed at the top of
-`.github/workflows/release.yml`) everything is signed and notarized.
+or push a `v*` tag. Without signing secrets the result is unsigned, and
+its notes say what that costs whoever downloads it; with them (listed
+at the top of `.github/workflows/release.yml`) everything is signed and
+notarized.
 
 To build signed, drop a DriverKit provisioning profile next to
 `driver/Makefile` (the Team ID is read out of it, never committed) and
